@@ -8,17 +8,6 @@ function F0
 
 global BpodSystem %This makes the BpodSystem object visible in the protocol function's workspace
 
-
-
-%% Analog Module setup % This is a legacy snippet that we don't use in the current version of the task. Just skip this section. 
-% A = BpodAnalogIn('/dev/cu.usbmodem39507201');
-% A.nActiveChannels = 2;
-% A.Thresholds  = [2 2 0 0 0 0 0 0];
-% A.ResetVoltages  = [1 1 0 0 0 0 0 0];
-% A.SMeventsEnabled  = [0 1 0 0 0 0 0 0];
-% A.Scope()
-% pause
-
 %% Setup (runs once before the first trial)
 %When you launch a protocol from the launch manager, you can select a settings file.
 %The settings file is simply a .mat file containing a parameter struct like the one above, which will be stored in BpodSystem.ProtocolSettings.
@@ -28,22 +17,16 @@ S = BpodSystem.ProtocolSettings;
 if isempty(fieldnames(S))
     S.GUI.RewardAmount = 5;
     S.GUI.MaxTrials = 200;
-    S.GUI.InterTrialIntervalMean = 3;
+    S.GUI.InterTrialIntervalMean = 2;
 end
 
 ValveTime = GetValveTimes(S.GUI.RewardAmount, 1); % Return the valve-open duration in seconds for valve 1
 
-
-
-
 TotalRewardDisplay('init'); % Total Reward display (online display of the total amount of liquid reward earned)
-%LicksPlot('init', getStateColors, getLickColors);
 BpodNotebook('init'); % Launches an interface to write notes about behavior and manually score trials
 BpodParameterGUI('init', S); %Initialize the Parameter GUI plugin
 
-
 %% Main loop (runs once per trial)
-
 for currentTrial = 1 : S.GUI.MaxTrials
     inter_trial_interval = exprnd(S.GUI.InterTrialIntervalMean) + S.GUI.InterTrialIntervalMean;
     while inter_trial_interval > 10
@@ -51,7 +34,6 @@ for currentTrial = 1 : S.GUI.MaxTrials
     end
     inter_trial_interval = ceil(inter_trial_interval);
     RewardOutput = {'PWM1', 155, 'ValveState', 1};
-%     A.startReportingEvents();
     S = BpodParameterGUI('sync', S);
     sma = NewStateMachine();
     sma = AddState(sma, 'Name', 'WaitForStart', ...
@@ -65,20 +47,18 @@ for currentTrial = 1 : S.GUI.MaxTrials
     sma = AddState(sma, 'Name', 'DrinkingGrace', ...
         'Timer', 3,...
         'StateChangeConditions', {'Tup', 'InterTrialDelay'},...
-        'OutputActions', {'PWM1', 155});
+        'OutputActions', {});
         sma = AddState(sma, 'Name', 'InterTrialDelay', ...
         'Timer', inter_trial_interval,...
         'StateChangeConditions', {'Tup', '>exit'},...
         'OutputActions', {});
     SendStateMatrix(sma); %Send the state matrix to the Bpod device
     RawEvents = RunStateMatrix; %Run the trial's finite state machine, and return the measured timecourse of events and states. The flow of states will be controlled by the Bpod device until the trial is complete (but see soft codes)
-%     A.stopReportingEvents();
     if ~isempty(fieldnames(RawEvents)) % If trial data was returnedBpodSystem.Data = AddTrialEvents(BpodSystem.Data, RawEvents); %Add this trial's raw data to a human-readable data struct. The data struct, BpodSystem.Data, will later be saved to the current data file (automatically created based on your launch manager selections and the current time).
         BpodSystem.Data = AddTrialEvents(BpodSystem.Data,RawEvents); % Computes trial events from raw data
         BpodSystem.Data = BpodNotebook('sync', BpodSystem.Data); %If you are using plugins that can add data to the data struct, call their update methods.
         BpodSystem.Data.TrialSettings(currentTrial) = S; %Add a snapshot of the current settings struct, for a record of the parameters used for the current trial.
         UpdateTotalRewardDisplay(S.GUI.RewardAmount, currentTrial);
-        %LicksPlot('update');
         SaveBpodSessionData; %Save the data struct to the current data file.
     end
     HandlePauseCondition; %If the user has pressed the "Pause" button on the Bpod console, wait here until the session is resumed
@@ -88,20 +68,9 @@ for currentTrial = 1 : S.GUI.MaxTrials
     end
 end
 
-
-
 function UpdateTotalRewardDisplay(RewardAmount, currentTrial)
 % If rewarded based on the state data, update the TotalRewardDisplay
 global BpodSystem
 if ~isnan(BpodSystem.Data.RawEvents.Trial{currentTrial}.States.Reward(1))
     TotalRewardDisplay('add', RewardAmount);
 end
-
-%function state_colors = getStateColors
-%state_colors = struct( ...
-%    'Reward',[178,223,138]./255,...
-%    'WaitForStart',[51,160,44]./255);
-
-%function lick_colors = getLickColors
-%lick_colors = struct( ...
-%    'Port1In', [228,26,28]./255);
