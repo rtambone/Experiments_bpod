@@ -1,4 +1,4 @@
-function GNG_discrimination_training
+function GNG_discrimination_test
 global BpodSystem
 
 %% Setup (runs once before the first trial)
@@ -11,13 +11,13 @@ if isempty(fieldnames(S))  % If chosen settings file was an empty struct, popula
     S.GUI.TimeForResponseDuration= 1;
     S.GUI.NothingTimeDuration= 1;
     S.GUI.DrinkingGraceDuration= 1;
-    S.GUI.MaxTrials= 200;   
+    S.GUI.MaxTrials= 7*10;   
 end
 
 %--- Define trials structure
-p=[0.35, 0.15, 0.5]; 
-pDist= makedist('Multinomial',p);
-TrialTypes= random(pDist, 1, S.GUI.MaxTrials); % draw random numbers from the specified distribution
+% p=[0.35, 0.15, 0.5]; 
+% pDist= makedist('Multinomial',p);
+TrialTypes= ceil(rand(1, S.GUI.MaxTrials)*7); % draw random numbers, one case: one stimulus
 BpodSystem.Data.TrialTypes= [];     % for storing trials completed 
 
 % InterTialInterval distribution
@@ -29,8 +29,8 @@ for i=1:S.GUI.MaxTrials
     end
     inter_trials_intervals(i)= ITI;
 end
-TimeOutStateDuration= max(inter_trials_interval) + 4;
-S.GUI.TimeOutStateDuration= TimeOutStateDuration;
+% TimeOutStateDuration= max(inter_trials_interval) + 4;
+% S.GUI.TimeOutStateDuration= TimeOutStateDuration;
 
 %--- Initialize plots
 TotalRewardDisplay('init'); % Total Reward display (online display of the total amount of liquid reward earned)
@@ -104,26 +104,42 @@ function [sma, S]= PrepareStateMachine(S, TrialTypes, currentTrial, currentTrial
 
 LoadSerialMessages('ValveModule1', {['B' 1], ['B' 2], ['B' 4], ['B' 8], ['B' 16], ['B' 32], ['B' 64], ['B' 128], ['B' 0]});
 
-RewardOutput= {'ValveState',1}; % open water valve
+% RewardOutput= {'ValveState',1}; % open water valve
 StopStimulusOutput= {'ValveModule1', 9, 'PWM1', 1};   % close all the valves and turn off light
-ValveTime= GetValveTimes(S.GUI.RewardAmount, 1);
+% ValveTime= GetValveTimes(S.GUI.RewardAmount, 1);
 
 S = BpodParameterGUI('sync', S); % Sync parameters with BpodParameterGUI plugin
 
 % Tial-specific state matrix 
 switch TrialTypes(currentTrial)
-    case 1  % Odor1 rewarded
+    case 1  % Odor1 
         StimulusArgument= {'ValveModule1', 1, 'PWM1', 255}; 
-        LickActionState= 'Reward';
+        LickActionState= 'Nothing';
         NoLickActionState= 'Nothing';
-    case 2  % Odor1 nothing 
-        StimulusArgument= {'ValveModule1', 1, 'PWM1', 255};
+    case 2  % Odor2
+        StimulusArgument= {'ValveModule1', 2, 'PWM1', 255};
         LickActionState= 'Nothing'; 
         NoLickActionState= 'Nothing';
-    case 3  % Odor2 
-        StimulusArgument= {'ValveModule1', 2, 'PWM1', 255}; 
-        LickActionState= 'TimeOutState';
+    case 3  % Odor3
+        StimulusArgument= {'ValveModule1', 3, 'PWM1', 255}; 
+        LickActionState= 'Nothing';
         NoLickActionState= 'Nothing';
+    case 4  % Odor4
+        StimulusArgument= {'ValveModule1', 4, 'PWM1', 255}; 
+        LickActionState= 'Nothing';
+        NoLickActionState= 'Nothing';
+    case 5  % Odor5
+        StimulusArgument= {'ValveModule1', 5, 'PWM1', 255}; 
+        LickActionState= 'Nothing';
+        NoLickActionState= 'Nothing';
+    case 6  % Odor6
+        StimulusArgument= {'ValveModule1', 6, 'PWM1', 255}; 
+        LickActionState= 'Nothing';
+        NoLickActionState= 'Nothing';
+    case 7  % Odor7
+        StimulusArgument= {'ValveModule1', 7, 'PWM1', 255}; 
+        LickActionState= 'Nothing';
+        NoLickActionState= 'Nothing';        
 end
 
 sma= NewStateMachine(); 
@@ -146,21 +162,21 @@ sma= AddState(sma, 'Name', 'TimeForResponse',...
     'Timer', S.GUI.TimeForResponseDuration,...
     'StateChangeCondition', {'Tup', NoLickActionState, 'Port1In', LickActionState},...
     'OutputActions', {});
-
-sma = AddState(sma, 'Name', 'Reward', ...
-    'Timer', ValveTime,...
-    'StateChangeConditions', {'Tup', 'DrinkingGrace'},...
-    'OutputActions', RewardOutput);
-
-sma = AddState(sma, 'Name', 'DrinkingGrace', ...
-    'Timer', S.GUI.DrinkingGraceDuration,...
-    'StateChangeConditions', {'Tup', 'InterTrialInterval'},...
-    'OutputActions', {});
-
-sma = AddState(sma, 'Name', 'TimeOutState', ...
-    'Timer', TimeOutStateDuration,...
-    'StateChangeConditions', {'Tup', 'InterTrialInterval'},...
-    'OutputActions', {});
+% 
+% sma = AddState(sma, 'Name', 'Reward', ...
+%     'Timer', ValveTime,...
+%     'StateChangeConditions', {'Tup', 'DrinkingGrace'},...
+%     'OutputActions', RewardOutput);
+% 
+% sma = AddState(sma, 'Name', 'DrinkingGrace', ...
+%     'Timer', S.GUI.DrinkingGraceDuration,...
+%     'StateChangeConditions', {'Tup', 'InterTrialInterval'},...
+%     'OutputActions', {});
+% 
+% sma = AddState(sma, 'Name', 'TimeOutState', ...
+%     'Timer', TimeOutStateDuration,...
+%     'StateChangeConditions', {'Tup', 'InterTrialInterval'},...
+%     'OutputActions', {});
 
 sma = AddState(sma, 'Name', 'Nothing', ...
     'Timer', S.GUI.NothingTimeDuration,...

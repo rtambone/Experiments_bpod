@@ -1,4 +1,4 @@
-function GNG_discrimination_training
+function GNG_categorization  
 global BpodSystem
 
 %% Setup (runs once before the first trial)
@@ -9,13 +9,14 @@ if isempty(fieldnames(S))  % If chosen settings file was an empty struct, popula
     S.GUI.PreStimulusDuration= 0.5; 
     S.GUI.StimulusDuration= 1; 
     S.GUI.TimeForResponseDuration= 1;
-    S.GUI.NothingTimeDuration= 1;
+    S.GUI.NothingTimeDuration= 1.5;
+    S.GUI.AirPuffDuration= 0.5;
     S.GUI.DrinkingGraceDuration= 1;
     S.GUI.MaxTrials= 200;   
 end
 
 %--- Define trials structure
-p=[0.35, 0.15, 0.5]; 
+p=[0.135 0.015 0.135 0.015 0.135 0.015 0.135 0.015 0.15 0.15 0.05, 0.05];
 pDist= makedist('Multinomial',p);
 TrialTypes= random(pDist, 1, S.GUI.MaxTrials); % draw random numbers from the specified distribution
 BpodSystem.Data.TrialTypes= [];     % for storing trials completed 
@@ -29,14 +30,12 @@ for i=1:S.GUI.MaxTrials
     end
     inter_trials_intervals(i)= ITI;
 end
-TimeOutStateDuration= max(inter_trials_interval) + 4;
-S.GUI.TimeOutStateDuration= TimeOutStateDuration;
 
 %--- Initialize plots
 TotalRewardDisplay('init'); % Total Reward display (online display of the total amount of liquid reward earned)
 BpodNotebook('init'); % Launches an interface to write notes about behavior and manually score trials
 BpodParameterGUI('init', S); %Initialize the Parameter GUI plugin
-BpodSystem.ProtocolFigures.TrialTypeOutcomePlotFig = figure('Position', [50 440 1000 270],'name','Outcome plot','numbertitle','off', 'MenuBar', 'none', 'Resize', 'off');
+BpodSystem.ProtocolFigures.TrialTypeOutcomePlotFig = figure('Position', [50 440 1000 370],'name','Outcome plot','numbertitle','off', 'MenuBar', 'none', 'Resize', 'off');
 BpodSystem.GUIHandles.TrialTypeOutcomePlot = axes('Position', [.075 .35 .89 .55]);
 TrialTypeOutcomePlot(BpodSystem.GUIHandles.TrialTypeOutcomePlot,'init',TrialTypes);
 % PerformancePlot('init', {1, 2}, {'go', 'nogo'})
@@ -48,7 +47,8 @@ TrialManager.startTrial(sma);
 
 %% Start successive trials
 for currentTrial = 1:S.GUI.MaxTrials
-    currentTrialEvents= TrialManager.getCurrentEvents({'Reward','Nothing', 'TimeOutState'});
+   % currentITI= S.GUI.inter_trials_intervals(currentTrials);
+    currentTrialEvents= TrialManager.getCurrentEvents({'Reward','Nothing', 'AirPuff'});
     % bpod waits until enters one of the listed trigger state, then returns
     % current trial's states visisted + events captured to this point 
     
@@ -105,25 +105,65 @@ function [sma, S]= PrepareStateMachine(S, TrialTypes, currentTrial, currentTrial
 LoadSerialMessages('ValveModule1', {['B' 1], ['B' 2], ['B' 4], ['B' 8], ['B' 16], ['B' 32], ['B' 64], ['B' 128], ['B' 0]});
 
 RewardOutput= {'ValveState',1}; % open water valve
-StopStimulusOutput= {'ValveModule1', 9, 'PWM1', 1};   % close all the valves and turn off light
+AirPuffOutput= {'ValveModule1', 8}; % open valve 8 for air puff
+StopStimulusOutput= {'ValveModule1', 9};   % close all the valves
 ValveTime= GetValveTimes(S.GUI.RewardAmount, 1);
 
 S = BpodParameterGUI('sync', S); % Sync parameters with BpodParameterGUI plugin
 
 % Tial-specific state matrix 
 switch TrialTypes(currentTrial)
-    case 1  % Odor1 rewarded
-        StimulusArgument= {'ValveModule1', 1, 'PWM1', 255}; 
+    % Go trials
+    case 1  % O1 rewarded
+        StimulusArgument= {'ValveModule1', 1}; 
         LickActionState= 'Reward';
-        NoLickActionState= 'Nothing';
-    case 2  % Odor1 nothing 
-        StimulusArgument= {'ValveModule1', 1, 'PWM1', 255};
+        NoLickActionState= 'InterTrialInterval';
+    case 2  % O1 nothing
+        StimulusArgument= {'ValveModule1', 1};
+        LickActionState= 'Nothing'; 
+        NoLickActionState= 'InterTrialInterval';
+    case 3  % O2 rewarded
+        StimulusArgument= {'ValveModule1', 2}; 
+        LickActionState= 'Reward';
+        NoLickActionState= 'InterTrialInterval';
+    case 4  % O2 nothing
+        StimulusArgument= {'ValveModule1', 2};
+        LickActionState= 'Nothing';  
+        NoLickActionState= 'InterTrialInterval';
+    % NoGo trials
+    case 5  % O3 punished
+        StimulusArgument= {'ValveModule1', 3}; 
+        LickActionState= 'AirPuff';
+        NoLickActionState= 'AirPuff';
+    case 6  % O3 nothing
+        StimulusArgument= {'ValveModule1', 3};
         LickActionState= 'Nothing'; 
         NoLickActionState= 'Nothing';
-    case 3  % Odor2 
-        StimulusArgument= {'ValveModule1', 2, 'PWM1', 255}; 
-        LickActionState= 'TimeOutState';
+    case 7  % O4 punished
+        StimulusArgument= {'ValveModule1', 4};
+        LickActionState= 'AirPuff'; 
+        NoLickActionState= 'AirPuff';
+    case 8  % O4 nothing
+        StimulusArgument= {'ValveModule1', 4};
+        LickActionState= 'Nothing';
         NoLickActionState= 'Nothing';
+    case 9  % O5 nothing
+        StimulusArgument= {'ValveModule1', 5};
+        LickActionState= 'Nothing'; 
+        NoLickActionState= 'Nothing';
+    case 10  % O6 nothing
+        StimulusArgument= {'ValveModule1', 6};
+        LickActionState= 'Nothing'; 
+        NoLickActionState= 'Nothing';
+    % Suddend reward 
+    case 11  % O- rewarded (there's no odor)
+        StimulusArgument= {};
+        NoLickActionState= 'Reward';
+        LickActionState= 'Reward';  
+    case 12  % O- punished (there's no odor)
+        StimulusArgument= {};
+        NoLickActionState= 'AirPuff';
+        LickActionState= 'AirPuff';  
 end
 
 sma= NewStateMachine(); 
@@ -157,10 +197,10 @@ sma = AddState(sma, 'Name', 'DrinkingGrace', ...
     'StateChangeConditions', {'Tup', 'InterTrialInterval'},...
     'OutputActions', {});
 
-sma = AddState(sma, 'Name', 'TimeOutState', ...
-    'Timer', TimeOutStateDuration,...
+sma = AddState(sma, 'Name', 'AirPuff', ...
+    'Timer', S.GUI.AirPuffDuration,...
     'StateChangeConditions', {'Tup', 'InterTrialInterval'},...
-    'OutputActions', {});
+    'OutputActions', AirPuffOutput);
 
 sma = AddState(sma, 'Name', 'Nothing', ...
     'Timer', S.GUI.NothingTimeDuration,...
@@ -184,17 +224,19 @@ function UpdateSideOutcomePlot(TrialTypes, Data)
 global BpodSystem
 Outcomes = NaN(1,Data.nTrials);
 for x = 1:Data.nTrials
-    if TrialTypes(x) == 1||2 %
+    if TrialTypes(x) == 1 || 2 || 3 || 4 % rewarding trials 
         if ~isnan(Data.RawEvents.Trial{x}.States.Reward(1))
             Outcomes(x) = 1; % licked and rewarded
         else 
             Outcomes(x) = 2; % licked but not rewarded
         end
-    elseif TrialTypes(x) == 3 %
-        if ~isnan(Data.RawEvents.Trial{x}.States.TimeOutState(1))
-            Outcomes(x) = 0; % licked and punished
-        else 
-            Outcomes(x) = 2; % not licked no punished
+    elseif TrialTypes(x) == 11 || 12 % sudden reward 
+        Outcomes(x) = 3;    
+    else    % all the other cases
+        if ~isnan(Data.RawEvents.Trial{x}.States.AirPuff(1))
+            Outcomes(x) = 0; 
+        elseif ~isnan(Data.RawEvents.Trial{x}.States.Nothing(1))
+            Outcomes(x) = -1; 
         end
     end
 end
