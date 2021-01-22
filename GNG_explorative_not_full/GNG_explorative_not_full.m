@@ -7,15 +7,15 @@ S = BpodSystem.ProtocolSettings; % Loads settings file chosen in launch manager 
 if isempty(fieldnames(S))  % If chosen settings file was an empty struct, populate struct with default settings
     S.GUI.RewardAmount= 5; 
     S.GUI.PreStimulusDuration= 0.5; 
-    S.GUI.StimulusDuration= 1; 
+    S.GUI.StimulusDuration= 2; 
     S.GUI.TimeForResponseDuration= 1;
-    S.GUI.NothingTimeDuration= 1;
-    S.GUI.DrinkingGraceDuration= 1;
+    S.GUI.NothingTimeDuration= 2;
+    S.GUI.DrinkingGraceDuration= 2;
     S.GUI.MaxTrials= 200;   
 end
 
 %--- Define trials structure
-p=[0.18, 0.02, 0.18, 0.02, 0.2, 0.2, 0.1];
+p=[0.2025, 0.0225, 0.2025, 0.0225, 0.225, 0.225, 0.1];
 pDist= makedist('Multinomial',p);
 TrialTypes= random(pDist, 1, S.GUI.MaxTrials); % draw random numbers from the specified distribution
 BpodSystem.Data.TrialTypes= [];     % for storing trials completed 
@@ -23,9 +23,9 @@ BpodSystem.Data.TrialTypes= [];     % for storing trials completed
 % InterTialInterval distribution
 inter_trials_intervals= zeros(1,S.GUI.MaxTrials); % pre-allocation for speed issues
 for i=1:S.GUI.MaxTrials
-    ITI= round(exprnd(1)+0.5,2);
+    ITI= round(exprnd(5)+1,2);
     while ITI > 3
-        ITI= round(exprnd(1)+0.5,2);
+        ITI= round(exprnd(5)+1,2);
     end
     inter_trials_intervals(i)= ITI;
 end
@@ -36,7 +36,7 @@ BpodNotebook('init'); % Launches an interface to write notes about behavior and 
 BpodParameterGUI('init', S); %Initialize the Parameter GUI plugin
 BpodSystem.ProtocolFigures.TrialTypeOutcomePlotFig = figure('Position', [50 440 1000 370],'name','Outcome plot','numbertitle','off', 'MenuBar', 'none', 'Resize', 'off');
 BpodSystem.GUIHandles.TrialTypeOutcomePlot = axes('Position', [.075 .35 .89 .55]);
-TrialTypeOutcomePlot(BpodSystem.GUIHandles.TrialTypeOutcomePlot,'init',TrialTypes);
+TrialTypeOutcomePlot(BpodSystem.GUIHandles.TrialTypeOutcomePlot, 'init', TrialTypes);
 % PerformancePlot('init', {1, 2}, {'go', 'nogo'})
 
 %% Start first trial 
@@ -46,13 +46,12 @@ TrialManager.startTrial(sma);
 
 %% Start successive trials
 for currentTrial = 1:S.GUI.MaxTrials
-   % currentITI= S.GUI.inter_trials_intervals(currentTrials);
     currentTrialEvents= TrialManager.getCurrentEvents({'Reward','Nothing'});
     % bpod waits until enters one of the listed trigger state, then returns
     % current trial's states visisted + events captured to this point 
     
     if BpodSystem.Status.BeingUsed == 0
-        Obj= ValveDriverModule('COM6');   %%% 
+        Obj= ValveDriverModule('COM4');   %%% 
         for idx= 1:8
             closeValve(Obj, idx)
         end
@@ -70,7 +69,7 @@ for currentTrial = 1:S.GUI.MaxTrials
     % hang here until trial is over, then retrives full trial's raw data
     
     if BpodSystem.Status.BeingUsed == 0
-        Obj= ValveDriverModule('COM6');   %%% 
+        Obj= ValveDriverModule('COM4');   %%% 
         for idx= 1:8
             closeValve(Obj, idx)
         end
@@ -89,7 +88,7 @@ for currentTrial = 1:S.GUI.MaxTrials
         BpodSystem.Data = AddTrialEvents(BpodSystem.Data,RawEvents); % Computes trial events from raw data
         BpodSystem.Data.TrialSettings(currentTrial) = S; % Adds the settings used for the current trial to the Data struct (to be saved after the trial ends)
         BpodSystem.Data.TrialTypes(currentTrial) = TrialTypes(currentTrial); % Adds the trial type of the current trial to data
-        UpdateSideOutcomePlot(TrialTypes, BpodSystem.Data);
+        UpdateTrialTypeOutcomePlot(TrialTypes, BpodSystem.Data);
 %       UpdatePerformancePlot(TrialTypes, BpodSystem.Data);
         UpdateTotalRewardDisplay(S.GUI.RewardAmount, currentTrial);
         SaveBpodSessionData; % Saves the field BpodSystem.Data to the current data file
@@ -105,7 +104,6 @@ LoadSerialMessages('ValveModule1', {['B' 1], ['B' 2], ['B' 4], ['B' 8], ['B' 16]
 
 RewardOutput= {'ValveState',1}; % open water valve
 StopStimulusOutput= {'ValveModule1', 9};   % close all the valves
-MineralOilOutput= {'ValveModule1', 1};
 ValveTime= GetValveTimes(S.GUI.RewardAmount, 1);
 
 S = BpodParameterGUI('sync', S); % Sync parameters with BpodParameterGUI plugin
@@ -148,13 +146,8 @@ end
 sma= NewStateMachine(); 
 sma= AddState(sma, 'Name', 'PreStimulus',...
     'Timer', S.GUI.PreStimulusDuration,...
-    'StateChangeCondition', {'Tup','CloseMineralOil'},...
-    'OutputActions', MineralOilOutput); 
-
-sma= AddState(sma, 'Name', 'CloseMineralOil',...
-    'Timer', 0,...
     'StateChangeCondition', {'Tup','DeliverStimulus'},...
-    'OutputActions', StopStimulusOutput); 
+    'OutputActions', {});  
 
 sma= AddState(sma, 'Name', 'DeliverStimulus',...
     'Timer', S.GUI.StimulusDuration,...
@@ -198,19 +191,35 @@ end
 % 1: correct, rewarded (filled green circle)
 % 2: correct, unrewarded (unfilled green circle)
 % 3: no response (unfilled black circle)
-function UpdateSideOutcomePlot(TrialTypes, Data)
+function UpdateTrialTypeOutcomePlot(TrialTypes, Data)
 % Determine outcomes from state data and score as the SideOutcomePlot plugin expects
 global BpodSystem
 Outcomes = NaN(1,Data.nTrials);
+Port1values= zeros(1, Data.nTrials);
 for x = 1:Data.nTrials
+    for i = 1:length(Data.RawEvents.Trial{x}.Events.Port1In)
+        if SessionData.RawEvents.Trial{x}.Events.Port1In(i) > SessionData.RawEvents.Trial{x}.States.TimeForResponse(1) && SessionData.RawEvents.Trial{x}.Events.Port1In(i) < SessionData.RawEvents.Trial{x}.States.TimeForResponse(2)
+            Port1values(x)= 1;
+        end
+    end
     if TrialTypes(x) == 1 || 3 % go rewarding trials 
         if ~isnan(Data.RawEvents.Trial{x}.States.Reward(1))
             Outcomes(x) = 1; % licked and rewarded
         else 
             Outcomes(x) = -1; % not licked
         end
-    else
-        Outcomes(x) = 3;
+    elseif TrialTypes(x) == 2 || 4 % go not-rewarding trials
+        if any(Port1values(x)) == 1 
+            Outcomes(x) = 2; % licked not reward
+        else 
+            Outcomes(x) = -1; % not licked but it should have 
+        end
+    elseif TrialTypes(x) == 5 || 6 % nothing trials
+        if any(Port1values(x)) == 1 
+            Outcomes(x) = -1; % licked 
+        else 
+            Outcomes(x) = 3; % not licked 
+        end
     end    
 end
 TrialTypeOutcomePlot(BpodSystem.GUIHandles.TrialTypeOutcomePlot,'update',Data.nTrials+1,TrialTypes,Outcomes);
