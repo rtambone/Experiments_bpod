@@ -1,0 +1,62 @@
+function GNG_explorative_noTrialManager
+global BpodSystem
+
+%% Setup (runs once before the first trial)
+S = BpodSystem.ProtocolSettings; % Loads settings file chosen in launch manager into current workspace as a struct called 'S'
+
+if isempty(fieldnames(S))  % If chosen settings file was an empty struct, populate struct with default settings
+    S.GUI.RewardAmount= 5; 
+    S.GUI.PreStimulusDuration= 0.5; 
+    S.GUI.StimulusDuration= 2; 
+    S.GUI.TimeForResponseDuration= 1;
+    S.GUI.NothingTimeDuration= 2;
+    S.GUI.DrinkingGraceDuration= 2;
+    S.GUI.MaxTrials= 200;   
+end
+
+%--- Define trials structure
+p=[0.2025, 0.0225, 0.2025, 0.0225, 0.225, 0.225, 0.1];
+pDist= makedist('Multinomial',p);
+TrialTypes= random(pDist, 1, S.GUI.MaxTrials); % draw random numbers from the specified distribution
+BpodSystem.Data.TrialTypes= [];     % for storing trials completed 
+
+% InterTialInterval distribution
+inter_trials_intervals= zeros(1,S.GUI.MaxTrials); % pre-allocation for speed issues
+for i=1:S.GUI.MaxTrials
+    ITI= round(exprnd(5)+1,2);
+    while ITI > 8
+        ITI= round(exprnd(5)+1,2);
+    end
+    inter_trials_intervals(i)= ITI;
+end
+
+%--- Initialize plots
+TotalRewardDisplay('init'); % Total Reward display (online display of the total amount of liquid reward earned)
+BpodNotebook('init'); % Launches an interface to write notes about behavior and manually score trials
+BpodParameterGUI('init', S); %Initialize the Parameter GUI plugin
+BpodSystem.ProtocolFigures.TrialTypeOutcomePlotFig = figure('Position', [50 440 1000 370],'name','Outcome plot','numbertitle','off', 'MenuBar', 'none', 'Resize', 'off');
+BpodSystem.GUIHandles.TrialTypeOutcomePlot = axes('Position', [.075 .35 .89 .55]);
+TrialTypeOutcomePlot(BpodSystem.GUIHandles.TrialTypeOutcomePlot, 'init', TrialTypes);
+% PerformancePlot('init', {1, 2}, {'go', 'nogo'})
+
+%% Main loop 
+for currentTrial = 1: S.GUI.MaxTrials
+    RewardOutput= {'ValveState',1}; % open water valve
+    StopStimulusOutput= {'ValveModule1', 9};   % close all the valves
+    ValveTime= GetValveTimes(S.GUI.RewardAmount, 1);
+    S= BpodParameterGUI('sync',S);
+    
+    
+
+
+
+    
+    
+    if BpodSystem.Status.BeingUsed == 0
+        Obj= ValveDriverModule('COM4');   %%% 
+        for idx= 1:8
+            closeValve(Obj, idx)
+        end
+        return;
+    end
+end 
