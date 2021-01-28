@@ -16,24 +16,29 @@ if isempty(fieldnames(S))  % If chosen settings file was an empty struct, popula
 end
  
 %--- Define trials structure
-TrialTypes= [];
+Trials_types= [];   % just the types of the trials
 for el= 1:61
-   TrialTypes= [TrialTypes 1];
-   TrialTypes= [TrialTypes 3];
+   Trials_types= [Trials_types 1];
+   Trials_types= [Trials_types 3];
 end
 for el= 1:7
-   TrialTypes= [TrialTypes 2];
-   TrialTypes= [TrialTypes 4];
+   Trials_types= [Trials_types 2];
+   Trials_types= [Trials_types 4];
 end
 for el= 1:67
-   TrialTypes= [TrialTypes 5];
-   TrialTypes= [TrialTypes 6];
+   Trials_types= [Trials_types 5];
+   Trials_types= [Trials_types 6];
 end
 for el= 1:30
-    TrialTypes= [TrialTypes 7];
+    Trials_types= [Trials_types 7];
 end
-TrialTypes_idx= randperm(S.GUI.MaxTrials);
-TrialTypes= Shuffle(TrialTypes);   
+TrialTypes_idx= randperm(S.GUI.MaxTrials); 
+TrialTypes= zeros(1,S.GUI.MaxTrials+100);   % the actual trial types to be used in the protocol
+for idx = 1:S.GUI.MaxTrials
+    TrialTypes(idx)= Trials_types(TrialTypes_idx(idx));
+end    
+    
+    
 BpodSystem.Data.TrialTypes= [];     % for storing trials completed 
  
 % InterTialInterval distribution
@@ -59,14 +64,14 @@ for currentTrial = 1: S.GUI.MaxTrials
     S= BpodParameterGUI('sync',S);
     
     % Tial-specific state matrix
-    switch TrialTypes(TrialTypes_idx(currentTrial))
+    switch TrialTypes(currentTrial)
         % CS+
         case 1  % CS1 rewarded
-            StimulusArgument= {'ValveModule1', 1};
+            StimulusArgument= {'ValveModule1', 5};
             LickActionState= 'Reward';
             NoLickActionState= 'TimeOut';
         case 2  % CS1 nothing
-            StimulusArgument= {'ValveModule1', 1};
+            StimulusArgument= {'ValveModule1', 5};
             LickActionState= 'FakeReward';
             NoLickActionState= 'TimeOut';
         case 3  % CS2 rewarded
@@ -91,6 +96,9 @@ for currentTrial = 1: S.GUI.MaxTrials
             StimulusArgument= {};
             LickActionState= 'Reward';
             NoLickActionState= 'Reward';
+        case 0
+            RunProtocol('Stop');
+            
     end
     
     % States definition
@@ -163,38 +171,43 @@ end
  
  
  
-% -1:   miss, punished (unfilled red circle)
-% 0:    false alarm, punished (filled red circle)
-% 1:    hit, rewarded (filled green circle)
-% 2:    correct rejection, unrewarded (unfilled green circle)
-% 3:    no response (unfilled black circle)
+% -1:   miss, punished (red circle)
+% 0:    false alarm, punished (red dot)
+% 1:    hit, rewarded (green dot)
+% 2:    correct rejection, unrewarded (green circle)
+% 3:    no response (black circle)
 function UpdateTrialTypeOutcomePlot(TrialTypes, Data)
 % Determine outcomes from state data and score as the SideOutcomePlot plugin expects
-% global BpodSystem
-Outcomes = 3*ones(1,Data.nTrials);
+global BpodSystem
+
+Outcomes = nan(1,Data.nTrials);
 for x = 1:Data.nTrials
-    if TrialTypes(x) == 1 || 3 % go rewarding trials
+    if TrialTypes(x) == 1 || TrialTypes(x) == 3 % go rewarding trials
         if ~isnan(Data.RawEvents.Trial{x}.States.Reward(1))
             Outcomes(x) = 1; % licked and rewarded
+        else
+            Outcomes(x) = -1; % not licked
+        end
+    end
+    if TrialTypes(x) == 2 || TrialTypes(x) ==4 % go not-rewarding trials
+        if ~isnan(Data.RawEvents.Trial{x}.States.FakeReward(1))
+            Outcomes(x) = 1; % licked not reward
+        else
+            Outcomes(x) = -1; % not licked but it should have
+        end
+    end
+    if TrialTypes(x) == 5 || TrialTypes(x) ==6 % nothing trials
+        if ~isnan(Data.RawEvents.Trial{x}.States.TimeOut(1))
+            Outcomes(x) = 0; % licked punished
         else
             Outcomes(x) = 2; % not licked
         end
     end
-    if TrialTypes(x) == 2 || 4 % go not-rewarding trials
-        if ~isnan(Data.RawEvents.Trial{x}.States.FakeReward(1))
-            Outcomes(x) = 1; % licked not reward
-        else
-            Outcomes(x) = 2; % not licked but it should have
-        end
-    end
-    if TrialTypes(x) == 5 || 6 % nothing trials
-        if ~isnan(Data.RawEvents.Trial{x}.States.TimeOut(1))
-            Outcomes(x) = 2; % licked
-        else
-            Outcomes(x) = 1; % not licked
-        end
+    if TrialTypes(x) == 7 % nothing trials
+        Outcomes(x) = 3; % licked punished
     end
 end
+BpodSystem.Data.Outcomes.Trial{x} = Outcomes(x);
 TrialTypeOutcomePlot(BpodSystem.GUIHandles.TrialTypeOutcomePlot,'update',Data.nTrials+1,TrialTypes,Outcomes);
  
 function UpdatePerformancePlot(TrialTypes, Data)
@@ -226,7 +239,7 @@ PerformancePlot('update',TrialTypes,Outcomes,Data.nTrials);
  
 function UpdateTotalRewardDisplay(RewardAmount, currentTrial)
 % If rewarded based on the state data, update the TotalRewardDisplay
-% global BpodSystem
+global BpodSystem
 if ~isnan(BpodSystem.Data.RawEvents.Trial{currentTrial}.States.Reward(1))
     TotalRewardDisplay('add', RewardAmount);
 end
