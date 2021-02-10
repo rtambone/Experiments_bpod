@@ -3,7 +3,7 @@ function softcode_valve_driver(Byte)
 global BpodSystem
 
 valve_drive= serialport('COMX', 1312500);   %initialize serial port 
-messages={['B',1], ['B' 2], ['B' 4], ['B' 8], ['B' 16], ['B' 32], ['B' 64], ['B' 128], ['B' 0]};
+%messages={['B',1], ['B' 2], ['B' 4], ['B' 8], ['B' 16], ['B' 32], ['B' 64], ['B' 128], ['B' 0]};
 
 fopen(valve_drive);
 switch Byte
