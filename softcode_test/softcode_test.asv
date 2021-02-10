@@ -1,0 +1,196 @@
+function softcode_test
+global BpodSystem
+ 
+%% Setup (runs once before the first trial)
+S = BpodSystem.ProtocolSettings; % Loads settings file chosen in launch manager into current workspace as a struct called 'S'
+
+if isempty(fieldnames(S))
+    S.GUI.MaxTrials = 200;
+    S.GUI.InterTrialIntervalMean = 2;
+end
+TrialTypes= ceil(rand(1, S.GUI.MaxTrials)*7);
+
+%% Main loop
+for currentTrial = 1: S.GUI.MaxTrials
+    %LoadSerialMessages('SoftCode', {['B' 1], ['B' 2], ['B' 4], ['B' 8], ['B' 16], ['B' 32], ['B' 64], ['B' 128], ['B' 0]});
+    inter_trial_interval = exprnd(S.GUI.InterTrialIntervalMean) + S.GUI.InterTrialIntervalMean;
+    while inter_trial_interval > 10
+        inter_trial_interval = exprnd(S.GUI.InterTrialIntervalMean) + S.GUI.InterTrialIntervalMean;
+    end
+    inter_trial_interval = ceil(inter_trial_interval);
+
+    StopStimulusOutput= {'SoftCode', 9};   % close all the valves
+    S= BpodParameterGUI('sync',S);
+    
+    % Tial-specific state matrix
+    switch TrialTypes(currentTrial)
+        case 1  
+            StimulusArgument= {'SoftCode', 1};
+        case 2  
+            StimulusArgument= {'SoftCode', 2};
+        case 3  
+            StimulusArgument= {'SoftCode', 3};
+        case 4  
+            StimulusArgument= {'SoftCode', 4};
+        case 5 
+            StimulusArgument= {'SoftCode', 5};
+        case 6  
+            StimulusArgument= {'SoftCode', 6};
+        case 7
+            StimulusArgument= {'SoftCode', 7};
+        case 8
+            StimulusArgument= {'SoftCode', 8};       
+    end
+    
+    % States definition
+    sma= NewStateMachine();
+    sma= AddState(sma, 'Name', 'PreStimulus',...
+        'Timer', 1,...
+        'StateChangeCondition', {'Tup','DeliverStimulus'},...
+        'OutputActions', {});
+    
+    sma= AddState(sma, 'Name', 'DeliverStimulusEarly',...
+        'Timer', 2,...
+        'StateChangeCondition', {'Tup',''},...
+        'OutputActions', StimulusArgument);
+    
+    sma= AddState(sma, 'Name', 'DeliverStimulusLate',...
+        'Timer', S.GUI.StimulusDuration./2,...
+        'StateChangeCondition', {'Tup','StopStimulus'},...
+        'OutputActions', StimulusArgument);
+    
+    sma= AddState(sma, 'Name', 'StopStimulus',...
+        'Timer', 0,...
+        'StateChangeCondition', {'Tup','TimeForResponse'},...
+        'OutputActions', StopStimulusOutput);
+    
+    sma= AddState(sma, 'Name', 'TimeForResponse',...
+        'Timer', S.GUI.TimeForResponseDuration,...
+        'StateChangeCondition', {'Tup', NoLickActionState, 'Port1In', LickActionState},...
+        'OutputActions', {});
+    
+    sma = AddState(sma, 'Name', 'Reward', ...
+        'Timer', ValveTime,...
+        'StateChangeConditions', {'Tup', 'InterTrialInterval'},...
+        'OutputActions', RewardOutput);
+    
+    sma = AddState(sma, 'Name', 'FakeReward', ...
+        'Timer', ValveTime,...
+        'StateChangeConditions', {'Tup', 'InterTrialInterval'},...
+        'OutputActions', {});
+    
+    sma = AddState(sma, 'Name', 'TimeOut', ...
+        'Timer', S.GUI.TimeOut,...
+        'StateChangeConditions', {'Tup', 'InterTrialInterval'},...
+        'OutputActions', {});
+    
+    sma= AddState(sma, 'Name', 'InterTrialInterval',...
+        'Timer', inter_trials_intervals(currentTrial), ...
+        'StateChangeConditions', {'Tup', '>exit'},...
+        'OutputActions', {});
+    SendStateMatrix(sma);
+    RawEvents= RunStateMatrix;
+    if ~isempty(fieldnames(RawEvents)) % If trial data was returned (i.e. if not final trial, interrupted by user)
+        BpodSystem.Data = AddTrialEvents(BpodSystem.Data,RawEvents); % Computes trial events from raw data
+        BpodSystem.Data.TrialSettings(currentTrial) = S; % Adds the settings used for the current trial to the Data struct (to be saved after the trial ends)
+        BpodSystem.Data.TrialTypes(currentTrial) = TrialTypes(currentTrial); % Adds the trial type of the current trial to data
+%         LicksPlot('update');
+        UpdateTrialTypeOutcomePlot(TrialTypes, BpodSystem.Data);
+        UpdatePerformancePlot(TrialTypes, BpodSystem.Data);
+        UpdateTotalRewardDisplay(S.GUI.RewardAmount, currentTrial);
+        SaveBpodSessionData; % Saves the field BpodSystem.Data to the current data file
+    end
+    HandlePauseCondition;
+    if BpodSystem.Status.BeingUsed == 0
+        Obj= ValveDriverModule('COM4');   %%%
+        for idx= 1:8
+            closeValve(Obj, idx)
+        end
+        return;
+    end
+end
+ 
+ 
+ 
+% -1:   miss, punished (red circle)
+% 0:    false alarm, punished (red dot)
+% 1:    hit, rewarded (green dot)
+% 2:    correct rejection, unrewarded (green circle)
+% 3:    no response (black circle)
+function UpdateTrialTypeOutcomePlot(TrialTypes, Data)
+% Determine outcomes from state data and score as the SideOutcomePlot plugin expects
+global BpodSystem
+
+Outcomes = nan(1,Data.nTrials);
+for x = 1:Data.nTrials
+    if TrialTypes(x) == 1 || TrialTypes(x) == 3 % go rewarding trials
+        if ~isnan(Data.RawEvents.Trial{x}.States.Reward(1))
+            Outcomes(x) = 1; % licked and rewarded
+        else
+            Outcomes(x) = -1; % not licked
+        end
+    end
+    if TrialTypes(x) == 2 || TrialTypes(x) ==4 % go not-rewarding trials
+        if ~isnan(Data.RawEvents.Trial{x}.States.FakeReward(1))
+            Outcomes(x) = 1; % licked not reward
+        else
+            Outcomes(x) = -1; % not licked but it should have
+        end
+    end
+    if TrialTypes(x) == 5 || TrialTypes(x) ==6 % nothing trials
+        if ~isnan(Data.RawEvents.Trial{x}.States.TimeOut(1))
+            Outcomes(x) = 0; % licked punished
+        else
+            Outcomes(x) = 2; % not licked
+        end
+    end
+    if TrialTypes(x) == 7 % nothing trials
+        Outcomes(x) = 3; % licked punished
+    end
+end
+BpodSystem.Data.Outcomes.Trial{x} = Outcomes(x);
+TrialTypeOutcomePlot(BpodSystem.GUIHandles.TrialTypeOutcomePlot,'update',Data.nTrials+1,TrialTypes,Outcomes);
+ 
+function UpdatePerformancePlot(TrialTypes, Data)
+Outcomes = -ones(1,Data.nTrials);
+for x = 1:Data.nTrials
+    if TrialTypes(x) == 1 || 3 % go rewarding trials
+        if ~isnan(Data.RawEvents.Trial{x}.States.Reward(1))
+            Outcomes(x) = 1; % licked and rewarded
+        else
+            Outcomes(x) = 0; % not licked
+        end
+    end
+    if TrialTypes(x) == 2 || 4 % go not-rewarding trials
+        if ~isnan(Data.RawEvents.Trial{x}.States.FakeReward(1))
+            Outcomes(x) = 1; % licked not reward
+        else
+            Outcomes(x) = 0; % not licked but it should have
+        end
+    end
+    if TrialTypes(x) == 5 || 6 % nothing trials
+        if ~isnan(Data.RawEvents.Trial{x}.States.TimeOut(1))
+            Outcomes(x) = 0; % licked
+        else
+            Outcomes(x) = 1; % not licked
+        end
+    end
+end
+PerformancePlot('update',TrialTypes,Outcomes,Data.nTrials);
+ 
+function UpdateTotalRewardDisplay(RewardAmount, currentTrial)
+% If rewarded based on the state data, update the TotalRewardDisplay
+global BpodSystem
+if ~isnan(BpodSystem.Data.RawEvents.Trial{currentTrial}.States.Reward(1))
+    TotalRewardDisplay('add', RewardAmount);
+end
+ 
+ 
+% function state_colors = getStateColors
+% state_colors = struct( ...
+%     'DeliverStimulus',[166,206,227]./255,...
+%     'WaitForResponse',[178,223,138]./255,...
+%     'Reward',[51,160,44]./255);
+ 
+% function lick_colors = getLickColors
+% lick_colors = struct( ...
