@@ -15,7 +15,6 @@ iti= 2
 for currentTrial = 1: S.GUI.MaxTrials
     %LoadSerialMessages('SoftCode', {['B' 1], ['B' 2], ['B' 4], ['B' 8], ['B' 16], ['B' 32], ['B' 64], ['B' 128], ['B' 0]});
     StopStimulusOutput= {'SoftCode', 9};   % close all the valves
-    S= BpodParameterGUI('sync',S);
     
     % Tial-specific state matrix
     switch TrialTypes(currentTrial)

@@ -2,29 +2,26 @@ function softcode_valve_driver(Byte)
 
 global BpodSystem
 
-valve_drive= serialport('COMX', 1312500);   %initialize serial port 
-%messages={['B',1], ['B' 2], ['B' 4], ['B' 8], ['B' 16], ['B' 32], ['B' 64], ['B' 128], ['B' 0]};
+valve_drive= serialport('COM7', 1312500);   %initialize serial port 
 
-fopen(valve_drive);
 switch Byte
     case 1
-        fwrite(valve_drive, ['B' 1]);
+        write(valve_drive, ['B' 1], 'uint8');
     case 2
-        fwrite(valve_drive, ['B' 2]);
+        write(valve_drive, ['B' 2], 'uint8');
     case 3
-        fwrite(valve_drive, ['B' 4]);
+        write(valve_drive, ['B' 4], 'uint8');
     case 4
-        fwrite(valve_drive, ['B' 8]);
+        write(valve_drive, ['B' 8], 'uint8');
     case 5
-        fwrite(valve_drive, ['B' 16]);
+        write(valve_drive, ['B' 16], 'uint8');
     case 6
-        fwrite(valve_drive, ['B' 32]);
+        write(valve_drive, ['B' 32], 'uint8');
     case 7
-        fwrite(valve_drive, ['B' 64]);
+        write(valve_drive, ['B' 64], 'uint8');
     case 8
-        fwrite(valve_drive, ['B' 128]);
+        write(valve_drive, ['B' 128], 'uint8');
     case 9
-        fwrite(valve_drive, ['B' 0]);
-
-fclose(valve_drive);
+        write(valve_drive, ['B' 0], 'uint8');
+end
 end
