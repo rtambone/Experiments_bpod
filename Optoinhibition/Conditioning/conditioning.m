@@ -18,24 +18,25 @@ global BpodSystem
 S = BpodSystem.ProtocolSettings; % Loads settings file chosen in launch manager into current workspace as a struct called 'S'
 
 if isempty(fieldnames(S))             
-    S.GUI.RewardAmount= 2;            % uL
-    S.GUI.PreStimulusDuration= 4; 
+    S.GUI.RewardAmount= 3;            % uL
+    S.GUI.PreStimulusDuration= 4;     % 4 + 1 sec to compensante for waiting for TTL
     S.GUI.StimulusDuration= 2;
-    S.GUI.PauseDuration= 1;
+    S.GUI.PauseDuration= 3;
     S.GUI.TimeForResponseDuration= 1;
     S.GUI.DrinkingGraceDuration= 2;
+    S.GUI.TimeOut= S.GUI.DrinkingGraceDuration + S.GUI.EndTrialLength + 6;  % The duration of the "normal" trial plus 6 seconds 
     S.GUI.EndTrialLength = 4;
-    S.GUI.ITImin= 12;
-    S.GUI.ITImax= 16;
+    S.GUI.ITImin= 5;
+    S.GUI.ITImax= 8;
     S.GUI.MaxTrials= 200;
     S.GUI.mySessionTrials= 150;
 end
 
 %% Define Trial Structure
 
-CS0Trials = [50 1];                       % Valve Click - [Number of Trials, Code]
-CS1Trials_R = [95 2];                     % CS+ - [Number of Rewarded Trials, Code]
-CS1Trials_nR = [5 3];                     % CS+ - [Number of non Rewarded Trials, Code]
+CS0Trials = [30 1];                       % Valve Click - [Number of Trials, Code]
+CS1Trials_R = [114 2];                     % CS+ - [Number of Rewarded Trials, Code]
+CS1Trials_nR = [6 3];                     % CS+ - [Number of non Rewarded Trials, Code]
 
 numOfCS0    = CS0Trials(2)*ones(1, CS0Trials(1));
 numOfCS1_R  = CS1Trials_R(2)*ones(1, CS1Trials_R(1));
@@ -63,22 +64,24 @@ TrialTypeOutcomePlot(BpodSystem.GUIHandles.TrialTypeOutcomePlot, 'init', trialTy
 %% Main Loop
 
 for currentTrial = 1: S.GUI.MaxTrials
+    
     LoadSerialMessages('ValveModule1', {['B' 1], ['B' 2], ['B' 4], ['B' 8], ['B' 16], ['B' 32], ['B' 64], ['B' 128], ['B' 0]});
     RewardOutput= {'ValveState',1}; % Open Water Valve
     StopStimulusOutput= {'ValveModule1', 9};   % Close all the Valves
+    LaserOn= {'BNC1', 1};
     S = BpodParameterGUI('sync',S);
     RewardAmount = GetValveTimes(S.GUI.RewardAmount, 1);
     
     % Tial-Specific State Matrix
     switch trialTypes(currentTrial)
         
-        % Valve Click
-        case 1
-            StimulusArgument= {'ValveModule1', 8};        % Insert the number of the valve to be opened WITHOUT odor
-            FollowingPause = 'NothingHappens';
+        % Valve Click, pure air
+        case 1 
+            StimulusArgument= {'ValveModule1', 8, 'BNC1',1};        % Insert the number of the valve to be opened WITHOUT odor
+            FollowingPause = 'TimeForResponse';
             NoLickActionState= 'NothingHappens';
-            LickActionState= 'NothingHappens';
-            NothingTime = S.GUI.DrinkingGraceDuration + S.GUI.TimeForResponseDuration;
+            LickActionState= 'TimeOut';                      % If lick, punish them with timeout
+            NothingTime = S.GUI.DrinkingGraceDuration
         
         % CS+ Reward
         case 2
@@ -87,16 +90,14 @@ for currentTrial = 1: S.GUI.MaxTrials
             LickActionState= 'Reward';                              % If Lick, Give Reward
             NoLickActionState= 'NothingHappens';                    % If not, end the Trial
             NothingTime = S.GUI.DrinkingGraceDuration;
-            Laser= {'BNC1', 1};
             
         % CS+ no Reward
         case 3
             StimulusArgument= {'ValveModule1', 5, 'BNC1',1};        % Insert the number of the valve to be opened for odors
-            FollowingPause = 'NothingHappens';                      % No reward given
+            FollowingPause = 'TimeForResponse';                      % No reward given
             NoLickActionState= 'NothingHappens';
             LickActionState= 'NothingHappens';
-            NothingTime = S.GUI.DrinkingGraceDuration + S.GUI.TimeForResponseDuration;
-            Laser= {'BNC1', 1};
+            NothingTime = S.GUI.DrinkingGraceDuration
             
         % Exit Protocol   
         case 0
@@ -107,40 +108,35 @@ for currentTrial = 1: S.GUI.MaxTrials
     
     sma= NewStateMachine(); % Initialize new state machine description    
     
-%     sma= AddState(sma, 'Name', 'StartTrial',...
-%         'Timer', 1,...
-%         'StateChangeCondition', {'Tup', 'PreStimulus'},...     % Start trial
-%         'OutputActions',{});                                                    
-    
     sma= AddState(sma, 'Name', 'PreStimulus',...
         'Timer', S.GUI.PreStimulusDuration,...
-        'StateChangeCondition', {'Tup','LaserOn'},...
+        'StateChangeCondition', {'Tup','PreStimulusPlusLaser'},...
         'OutputActions', {});    
     
-    sma= AddState(sma, 'Name', 'LaserOn',...
-        'Timer', 2,...
+    sma= AddState(sma, 'Name', 'PreStimulusPlusLaser',...
+        'Timer', 1,...
         'StateChangeCondition', {'Tup', 'DeliverStimulus'},...
-        'OutputActions', Laser);
+        'OutputActions', LaserOn);
 
     sma= AddState(sma, 'Name', 'DeliverStimulus',...
         'Timer', S.GUI.StimulusDuration,...
         'StateChangeCondition', {'Tup','StopStimulus'},...
         'OutputActions', StimulusArgument);                         %
 
-%     sma= AddState(sma, 'Name', 'DeliverStimulus+Light',...
-%         'Timer', S.GUI.StimulusDuration,...
-%         'StateChangeCondition', {'Tup','StopStimulus'},...
-%         'OutputActions', StimulusArgument);   
-    
     sma= AddState(sma, 'Name', 'StopStimulus',...
         'Timer', 0,...
-        'StateChangeCondition', {'Tup','Pause'},...
+        'StateChangeCondition', {'Tup','PausePlusLaser'},...
         'OutputActions', StopStimulusOutput);
     
-    sma= AddState(sma, 'Name', 'Pause',...                          % Waits for Set amount of Time (CS-ResponseWindow Delay)
-        'Timer', S.GUI.PauseDuration,...
+    sma= AddState(sma, 'Name', 'PausePlusLaser',...                          % Waits for Set amount of Time (CS-ResponseWindow Delay)
+        'Timer', 1,...
+        'StateChangeCondition', {'Tup', 'PauseNoLaser'},...
+        'OutputActions', LaserOn);
+ 
+     sma= AddState(sma, 'Name', 'PauseNoLaser',...                          % Waits for Set amount of Time (CS-ResponseWindow Delay)
+        'Timer', 2,...
         'StateChangeCondition', {'Tup', FollowingPause},...
-        'OutputActions', Laser);
+        'OutputActions', {});
     
     sma= AddState(sma, 'Name', 'TimeForResponse',...
         'Timer', S.GUI.TimeForResponseDuration,...
@@ -155,6 +151,11 @@ for currentTrial = 1: S.GUI.MaxTrials
     sma = AddState(sma, 'Name', 'DrinkingGrace', ...                % Grace period for the mouse (to let him drink)
         'Timer', S.GUI.DrinkingGraceDuration,...
         'StateChangeConditions', {'Tup', 'EndTrial'},...
+        'OutputActions', {});
+    
+    sma= AddState(sma, 'Name', 'TimeOut', ...
+        'Timer', S.GUI.TimeOut, ...
+        'StateChangeConditions', {'Tup', 'InterTrialInterval'},...
         'OutputActions', {});
     
     sma= AddState(sma, 'Name', 'NothingHappens',...
