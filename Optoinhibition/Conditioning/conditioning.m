@@ -34,9 +34,9 @@ end
 
 %% Define Trial Structure
 
-CS0Trials = [30 1];                       % Valve Click - [Number of Trials, Code]
-CS1Trials_R = [114 2];                     % CS+ - [Number of Rewarded Trials, Code]
-CS1Trials_nR = [6 3];                     % CS+ - [Number of non Rewarded Trials, Code]
+CS0Trials = [75 1];                       % Valve Click - [Number of Trials, Code]
+CS1Trials_R = [71 2];                     % CS+ - [Number of Rewarded Trials, Code]
+CS1Trials_nR = [4 3];                     % CS+ - [Number of non Rewarded Trials, Code]
 
 numOfCS0    = CS0Trials(2)*ones(1, CS0Trials(1));
 numOfCS1_R  = CS1Trials_R(2)*ones(1, CS1Trials_R(1));
@@ -77,11 +77,11 @@ for currentTrial = 1: S.GUI.MaxTrials
         
         % Valve Click, pure air
         case 1 
-            StimulusArgument= {'ValveModule1', 8, 'BNC1',1};        % Insert the number of the valve to be opened WITHOUT odor
+            StimulusArgument= {'ValveModule1', 2, 'BNC1',1};        % Insert the number of the valve to be opened WITHOUT odor
             FollowingPause = 'TimeForResponse';
             NoLickActionState= 'NothingHappens';
             LickActionState= 'TimeOut';                      % If lick, punish them with timeout
-            NothingTime = S.GUI.DrinkingGraceDuration
+            NothingTime = S.GUI.DrinkingGraceDuration;
         
         % CS+ Reward
         case 2
@@ -141,7 +141,7 @@ for currentTrial = 1: S.GUI.MaxTrials
     sma= AddState(sma, 'Name', 'TimeForResponse',...
         'Timer', S.GUI.TimeForResponseDuration,...
         'StateChangeCondition', {'Tup', NoLickActionState, 'Port1In', LickActionState},...
-        'OutputActions', {});
+        'OutputActions', {'PWM1',255});
 
     sma = AddState(sma, 'Name', 'Reward', ...                       
         'Timer', RewardAmount,...
@@ -185,7 +185,7 @@ for currentTrial = 1: S.GUI.MaxTrials
     end
     HandlePauseCondition;
     if BpodSystem.Status.BeingUsed == 0
-        Obj= ValveDriverModule('COM7');   %%%
+        Obj= ValveDriverModule('COM4');   %%%
         for idx= 1:8
             closeValve(Obj, idx)
         end
@@ -216,13 +216,14 @@ for x = 1:Data.nTrials
         end
         
     elseif TrialTypes(x) == 3 % CS+ no Reward Trials
-        % No Graphical Display of Performance during Valve Clicks Trials (?)
         Outcomes(x) = 3; % Licked
         
     elseif TrialTypes(x) == 1 % Click Trials
-        % No Graphical Display of Performance during Valve Clicks Trials (?)
-        Outcomes(x) = 3; % Licked
-        
+        if ~isnan(Data.RawEvents.Trial{x}.States.TimeOut(1))
+            Outcomes(x) = 0; % Licked, punished
+        else
+            Outcomes(x) = 2; % not Licked
+        end
     end
 end
 TrialTypeOutcomePlot(BpodSystem.GUIHandles.TrialTypeOutcomePlot,'update',Data.nTrials+1,TrialTypes,Outcomes);

@@ -1,4 +1,4 @@
-function conditioning
+function pavlovian_conditioning
 
 % This protocol presents the mouse with two stimuli, a rewarded odor and a non-rewarded valve click. 
 % Written by Marco Colnaghi and Riccardo Tambone, 04.13.2021.
@@ -9,7 +9,7 @@ function conditioning
 % - An Olfactometer.
 % - A Lickport.
 
-% To be presented on DAY 1 and 2.
+% To be presented on DAY 1, 2, and 3.
 
 global BpodSystem
 
@@ -22,9 +22,8 @@ if isempty(fieldnames(S))
     S.GUI.PreStimulusDuration= 4;     % 4 + 1 sec to compensante for waiting for TTL
     S.GUI.StimulusDuration= 2;
     S.GUI.PauseDuration= 3;
-    S.GUI.TimeForResponseDuration= 1;
+    S.GUI.LEDduration= 1;
     S.GUI.DrinkingGraceDuration= 2;
-    S.GUI.TimeOut= S.GUI.DrinkingGraceDuration + S.GUI.EndTrialLength + 6;  % The duration of the "normal" trial plus 6 seconds 
     S.GUI.EndTrialLength = 4;
     S.GUI.ITImin= 5;
     S.GUI.ITImax= 8;
@@ -35,14 +34,14 @@ end
 %% Define Trial Structure
 
 CS0Trials = [75 1];                       % Valve Click - [Number of Trials, Code]
-CS1Trials_R = [71 2];                     % CS+ - [Number of Rewarded Trials, Code]
-CS1Trials_nR = [4 3];                     % CS+ - [Number of non Rewarded Trials, Code]
+CS1Trials_R = [75 2];                     % CS+ - [Number of Rewarded Trials, Code]
+% CS1Trials_nR = [4 3];                     % CS+ - [Number of non Rewarded Trials, Code]
 
 numOfCS0    = CS0Trials(2)*ones(1, CS0Trials(1));
 numOfCS1_R  = CS1Trials_R(2)*ones(1, CS1Trials_R(1));
-numOfCS1_nR = CS1Trials_nR(2)*ones(1, CS1Trials_nR(1));
+% numOfCS1_nR = CS1Trials_nR(2)*ones(1, CS1Trials_nR(1));
 
-trialTypes = ([numOfCS0, numOfCS1_R, numOfCS1_nR]);
+trialTypes = ([numOfCS0, numOfCS1_R]);
 trialTypes = trialTypes(randperm(length(trialTypes)));               % Create Trial Vector
 
 % Ending Sequence
@@ -67,10 +66,11 @@ for currentTrial = 1: S.GUI.MaxTrials
     
     LoadSerialMessages('ValveModule1', {['B' 1], ['B' 2], ['B' 4], ['B' 8], ['B' 16], ['B' 32], ['B' 64], ['B' 128], ['B' 0]});
     RewardOutput= {'ValveState',1}; % Open Water Valve
+    RewardDuration = GetValveTimes(S.GUI.RewardAmount, 1);
     StopStimulusOutput= {'ValveModule1', 9};   % Close all the Valves
     LaserOn= {'BNC1', 1};
+    LED= {'PWM1',255};
     S = BpodParameterGUI('sync',S);
-    RewardAmount = GetValveTimes(S.GUI.RewardAmount, 1);
     
     % Tial-Specific State Matrix
     switch trialTypes(currentTrial)
@@ -78,34 +78,33 @@ for currentTrial = 1: S.GUI.MaxTrials
         % Valve Click, pure air
         case 1 
             StimulusArgument= {'ValveModule1', 2, 'BNC1',1};        % Insert the number of the valve to be opened WITHOUT odor
-            FollowingPause = 'TimeForResponse';
-            NoLickActionState= 'NothingHappens';
-            LickActionState= 'TimeOut';                      % If lick, punish them with timeout
-            NothingTime = S.GUI.DrinkingGraceDuration;
+            FollowingLED = 'FakeReward';
+            EndTrialDuration= S.GUI.EndTrialLength + S.GUI.DrinkingGraceDuration;
         
         % CS+ Reward
         case 2
             StimulusArgument= {'ValveModule1', 5, 'BNC1',1};        % Inser the number of the valve to be opened for odors 
-            FollowingPause = 'TimeForResponse';
-            LickActionState= 'Reward';                              % If Lick, Give Reward
-            NoLickActionState= 'NothingHappens';                    % If not, end the Trial
-            NothingTime = S.GUI.DrinkingGraceDuration;
-            
-        % CS+ no Reward
-        case 3
-            StimulusArgument= {'ValveModule1', 5, 'BNC1',1};        % Insert the number of the valve to be opened for odors
-            FollowingPause = 'TimeForResponse';                      % No reward given
-            NoLickActionState= 'NothingHappens';
-            LickActionState= 'NothingHappens';
-            NothingTime = S.GUI.DrinkingGraceDuration
-            
+            FollowingLED = 'Reward';
+            EndTrialDuration= S.GUI.EndTrialLength;
+
         % Exit Protocol   
         case 0
             RunProtocol('Stop');
     end
     
-    % States Definitions
+%%%%%%%%% IN CASE OF NON-REWARDING CS+ TRIALS %%%%%%%%%%%          
+%         % CS+ no Reward
+%         case 3
+%             StimulusArgument= {'ValveModule1', 5, 'BNC1',1};        % Insert the number of the valve to be opened for odors
+%             FollowingPause = 'TimeForResponse';                      % No reward given
+%             NoLickActionState= 'NothingHappens';
+%             LickActionState= 'NothingHappens';
+%             NothingTime = S.GUI.DrinkingGraceDuration
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
     
+    % States Definitions
     sma= NewStateMachine(); % Initialize new state machine description    
     
     sma= AddState(sma, 'Name', 'PreStimulus',...
@@ -135,16 +134,16 @@ for currentTrial = 1: S.GUI.MaxTrials
  
      sma= AddState(sma, 'Name', 'PauseNoLaser',...                          % Waits for Set amount of Time (CS-ResponseWindow Delay)
         'Timer', 2,...
-        'StateChangeCondition', {'Tup', FollowingPause},...
+        'StateChangeCondition', {'Tup', 'LEDon'},...
         'OutputActions', {});
     
-    sma= AddState(sma, 'Name', 'TimeForResponse',...
-        'Timer', S.GUI.TimeForResponseDuration,...
-        'StateChangeCondition', {'Tup', NoLickActionState, 'Port1In', LickActionState},...
-        'OutputActions', {'PWM1',255});
+    sma= AddState(sma, 'Name', 'LEDon',...
+        'Timer', S.GUI.LEDduration,...
+        'StateChangeCondition', {'Tup', FollowingLED},...
+        'OutputActions', LEDon);
 
     sma = AddState(sma, 'Name', 'Reward', ...                       
-        'Timer', RewardAmount,...
+        'Timer', RewardDuration,...
         'StateChangeConditions', {'Tup', 'DrinkingGrace'},...
         'OutputActions', RewardOutput);
 
@@ -153,18 +152,13 @@ for currentTrial = 1: S.GUI.MaxTrials
         'StateChangeConditions', {'Tup', 'EndTrial'},...
         'OutputActions', {});
     
-    sma= AddState(sma, 'Name', 'TimeOut', ...
-        'Timer', S.GUI.TimeOut, ...
-        'StateChangeConditions', {'Tup', 'InterTrialInterval'},...
+    sma= AddState(sma, 'Name', 'FakeReward', ...
+        'Timer', RewardDuration, ...
+        'StateChangeConditions', {'Tup', 'EndTrial'},...
         'OutputActions', {});
-    
-    sma= AddState(sma, 'Name', 'NothingHappens',...
-        'Timer', NothingTime,...
-        'StateChangeCondition', {'Tup', 'EndTrial'},...
-        'OutputActions', {});
-    
+        
     sma = AddState(sma, 'Name', 'EndTrial', ...
-        'Timer', S.GUI.EndTrialLength,...
+        'Timer', EndTrialDuration,...
         'StateChangeConditions', {'Tup', 'InterTrialInterval'},...
         'OutputActions', {});
     
@@ -206,25 +200,19 @@ function UpdateTrialTypeOutcomePlot(TrialTypes, Data)
 global BpodSystem
 
 Outcomes = zeros(1,Data.nTrials);
-for x = 1:Data.nTrials
-    
+for x = 1:Data.nTrials    
     if TrialTypes(x) == 2 % CS+ Trials
         if ~isnan(Data.RawEvents.Trial{x}.States.Reward(1))
             Outcomes(x) = 1; % Licked, Reward
         else
             Outcomes(x) = -1; % No Lick
-        end
-        
-    elseif TrialTypes(x) == 3 % CS+ no Reward Trials
-        Outcomes(x) = 3; % Licked
-        
+        end        
     elseif TrialTypes(x) == 1 % Click Trials
         if ~isnan(Data.RawEvents.Trial{x}.States.TimeOut(1))
             Outcomes(x) = 0; % Licked, punished
         else
-            Outcomes(x) = 2; % 
-        Outcomes(x) = 1; % Licked
-        
+            Outcomes(x) = 2; % not Licked
+        end
     end
 end
 TrialTypeOutcomePlot(BpodSystem.GUIHandles.TrialTypeOutcomePlot,'update',Data.nTrials+1,TrialTypes,Outcomes);
