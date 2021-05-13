@@ -19,7 +19,7 @@ S = BpodSystem.ProtocolSettings; % Loads settings file chosen in launch manager 
 
 if isempty(fieldnames(S))             
     S.GUI.RewardAmount= 3;            % uL
-    S.GUI.PreStimulusDuration= 4;     % 4 + 1 sec to compensante for waiting for TTL
+    S.GUI.PreStimulusDuration= 4;     % 4 + 1 sec to with laser on 
     S.GUI.StimulusDuration= 2;
     S.GUI.PauseDuration= 3;
     S.GUI.LEDduration= 1;
@@ -69,7 +69,7 @@ for currentTrial = 1: S.GUI.MaxTrials
     RewardDuration = GetValveTimes(S.GUI.RewardAmount, 1);
     StopStimulusOutput= {'ValveModule1', 9};   % Close all the Valves
     LaserOn= {'BNC1', 1};
-    LED= {'PWM1',255};
+    LEDon= {'PWM1',255};
     S = BpodParameterGUI('sync',S);
     
     % Tial-Specific State Matrix
@@ -83,7 +83,7 @@ for currentTrial = 1: S.GUI.MaxTrials
         
         % CS+ Reward
         case 2
-            StimulusArgument= {'ValveModule1', 5, 'BNC1',1};        % Inser the number of the valve to be opened for odors 
+            StimulusArgument= {'ValveModule1', 3, 'BNC1',1};        % Inser the number of the valve to be opened for odors 
             FollowingLED = 'Reward';
             EndTrialDuration= S.GUI.EndTrialLength;
 
@@ -202,17 +202,31 @@ global BpodSystem
 Outcomes = zeros(1,Data.nTrials);
 for x = 1:Data.nTrials    
     if TrialTypes(x) == 2 % CS+ Trials
-        if ~isnan(Data.RawEvents.Trial{x}.States.Reward(1))
-            Outcomes(x) = 1; % Licked, Reward
-        else
+        if ~isfield(Data.RawEvents.Trial{x}.Events,'Port1In')
             Outcomes(x) = -1; % No Lick
-        end        
-    elseif TrialTypes(x) == 1 % Click Trials
-        if ~isnan(Data.RawEvents.Trial{x}.States.TimeOut(1))
-            Outcomes(x) = 0; % Licked, punished
         else
-            Outcomes(x) = 2; % not Licked
-        end
+            licks_ts= Data.RawEvents.Trial{x}.Events.Port1In;
+            infBound= Data.RawEvents.Trial{x}.States.LEDon(1);
+            supBound= Data.RawEvents.Trial{x}.States.LEDon(2);
+            if any(licks_ts> infBound) && any(licks_ts< supBound)
+                Outcomes(x) = 1; % Lick
+            else
+                Outcomes(x)= -1; % No Lick, wrong
+            end
+        end        
+    elseif TrialTypes(x) == 1 % No Odor Trials
+        if ~isfield(Data.RawEvents.Trial{x}.Events,'Port1In')
+            Outcomes(x) = 1; % No Lick, correct
+        else
+            licks_ts= Data.RawEvents.Trial{x}.Events.Port1In;
+            infBound= Data.RawEvents.Trial{x}.States.LEDon(1);
+            supBound= Data.RawEvents.Trial{x}.States.LEDon(2);
+            if any(licks_ts> infBound) && any(licks_ts< supBound)
+                Outcomes(x) = -1; % Lick, wrong
+            else
+                Outcomes(x)= 1; % No Lick
+            end
+        end        
     end
 end
 TrialTypeOutcomePlot(BpodSystem.GUIHandles.TrialTypeOutcomePlot,'update',Data.nTrials+1,TrialTypes,Outcomes);
