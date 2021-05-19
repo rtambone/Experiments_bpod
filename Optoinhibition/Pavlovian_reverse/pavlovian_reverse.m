@@ -1,4 +1,4 @@
-function pavlovian_discrimination
+function pavlovian_reverse
 
 % This protocol presents the mouse with two stimuli, a rewarded odor and a non-rewarded valve click. 
 % Written by Marco Colnaghi and Riccardo Tambone, 04.13.2021.
@@ -76,15 +76,15 @@ for currentTrial = 1: S.GUI.MaxTrials
     % Tial-Specific State Matrix
     switch trialTypes(currentTrial)
         
-        % CS- (carvone)
+        % CS- (cymene)
         case 1 
-            StimulusArgument= {'ValveModule1', 4, 'BNC1',1};        % Insert the number of the valve to be opened for CS- odor
+            StimulusArgument= {'ValveModule1', 3, 'BNC1',1};        % Insert the number of the valve to be opened for CS- odor
             FollowingLED = 'FakeReward';
             EndTrialDuration= S.GUI.EndTrialLength + S.GUI.DrinkingGraceDuration;
         
-        % CS+ Reward (cymene)
+        % CS+ Reward (carvone)
         case 2
-            StimulusArgument= {'ValveModule1', 3, 'BNC1',1};        % Inser the number of the valve to be opened for CS+ odors 
+            StimulusArgument= {'ValveModule1', 4, 'BNC1',1};        % Inser the number of the valve to be opened for CS+ odors 
             FollowingLED = 'Reward';
             EndTrialDuration= S.GUI.EndTrialLength;
 
